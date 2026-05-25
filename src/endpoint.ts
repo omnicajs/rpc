@@ -1,12 +1,21 @@
-import {createBasicEncoder} from './encoding';
+import {createBasicEncoder} from './encoding/index';
 import type {
   MessageEndpoint,
   RemoteCallable,
   EncodingStrategy,
   EncodingStrategyApi,
+  EndpointPhase,
+  EndpointErrorKind,
+  EndpointTransportError,
+  RpcRejection,
+  RpcRejectionMeta,
 } from './types';
 import {StackFrame} from './memory';
 import type {Retainer} from './memory';
+import {
+  CallAfterTerminateError,
+  NoExposedMethodError,
+} from './errors';
 
 export const CALL = 0;
 export const RESULT = 1;
@@ -19,12 +28,16 @@ type AnyFunction = (...args: any[]) => any;
 
 interface MessageMap {
   [CALL]: [string, string | number, any];
-  [RESULT]: [string, Error?, any?];
+  [RESULT]: [string, RpcRejection?, any?];
   [TERMINATE]: void;
   [RELEASE]: [string];
   [FUNCTION_APPLY]: [string, string, any];
-  [FUNCTION_RESULT]: [string, Error?, any?];
+  [FUNCTION_RESULT]: [string, RpcRejection?, any?];
 }
+
+type MessageData = {
+  [K in keyof MessageMap]: [K, MessageMap[K]];
+}[keyof MessageMap];
 
 export interface CreateEndpointOptions<T = unknown> {
   uuid?(): string;
@@ -38,6 +51,42 @@ export interface Endpoint<T> {
   expose(api: Record<string, AnyFunction | undefined>): void;
   callable(...methods: string[]): void;
   terminate(): void;
+}
+
+export class MissingResolverError extends Error {
+  readonly callId: string;
+  readonly error?: Error;
+  readonly rejection?: RpcRejectionMeta;
+  readonly result?: unknown;
+  readonly groupingHash: string = 'RemoteUI::MissingResolverError';
+
+  constructor(message: {
+    callId: string;
+    error?: Error;
+    rejection?: RpcRejectionMeta;
+    result?: unknown;
+    stack?: string;
+  }) {
+    const {callId, error, rejection, result, stack} = message;
+
+    const errorMessage = error ? ` Error: ${String(error)}` : '';
+    const resultMessage =
+      result == null ? '' : ` Result: ${JSON.stringify(result)}`;
+
+    super(
+      `No resolver found for call ID: ${callId}${errorMessage}${resultMessage}`,
+    );
+
+    this.name = 'MissingResolverError';
+    this.callId = callId;
+    this.error = error;
+    this.rejection = rejection;
+    this.result = result;
+
+    if (stack) {
+      this.stack = stack;
+    }
+  }
 }
 
 /**
@@ -72,9 +121,11 @@ export function createEndpoint<T>(
   }: CreateEndpointOptions<T> = {},
 ): Endpoint<T> {
   let terminated = false;
+  let phase: EndpointPhase = 'active';
   let messenger = initialMessenger;
 
   const activeApi = new Map<string | number, AnyFunction>();
+  const pendingCallInfo = new Map<string, {stack: string | undefined; args: unknown[]}>();
   const callIdsToResolver = new Map<
     string,
     (
@@ -137,6 +188,7 @@ export function createEndpoint<T>(
       }
     },
     terminate() {
+      phase = 'terminating';
       send(TERMINATE, undefined);
 
       terminate();
@@ -144,6 +196,8 @@ export function createEndpoint<T>(
       if (messenger.terminate) {
         messenger.terminate();
       }
+
+      phase = 'terminated';
     },
   };
 
@@ -160,9 +214,13 @@ export function createEndpoint<T>(
   }
 
   async function listener(event: MessageEvent) {
+    if (terminated) {
+      return;
+    }
+
     const {data} = event;
 
-    if (data == null || !Array.isArray(data)) {
+    if (!isMessageData(data)) {
       return;
     }
 
@@ -173,24 +231,29 @@ export function createEndpoint<T>(
       }
       case CALL: {
         const stackFrame = new StackFrame();
-        const [id, property, args] = data[1] as MessageMap[typeof CALL];
+        const [id, property, args] = data[1];
         const func = activeApi.get(property);
+        let decodedArgs: unknown[] | undefined;
 
         try {
           if (func == null) {
-            throw new Error(
-              `No '${property}' method is exposed on this endpoint`,
-            );
+            throw new NoExposedMethodError(property);
           }
 
-          const [encoded, transferables] = encoder.encode(
-            await func(...(encoder.decode(args, [stackFrame]) as any[])),
-          );
+          decodedArgs = encoder.decode(args, [stackFrame]) as unknown[];
+          const result = await func(...decodedArgs);
+          const [encoded, transferables] = encoder.encode(result);
 
           send(RESULT, [id, undefined, encoded], transferables);
         } catch (error) {
-          const {name, message, stack} = error as Error;
-          send(RESULT, [id, {name, message, stack}]);
+          const transportError = classifyTransportError(error, {
+            callId: id,
+            method: String(property),
+            args: decodedArgs,
+            phase,
+          });
+
+          send(RESULT, [id, toWireRejection(transportError)]);
           throw error;
         } finally {
           stackFrame.release();
@@ -198,40 +261,47 @@ export function createEndpoint<T>(
 
         break;
       }
-      case RESULT: {
-        const [callId] = data[1] as MessageMap[typeof RESULT];
-
-        callIdsToResolver.get(callId)!(
-          ...(data[1] as MessageMap[typeof RESULT]),
-        );
+      case RESULT:
+      case FUNCTION_RESULT: {
+        const [callId, rejection, result] = data[1];
+        const resolver = callIdsToResolver.get(callId);
         callIdsToResolver.delete(callId);
+        const callInfo = pendingCallInfo.get(callId);
+        pendingCallInfo.delete(callId);
+
+        if (resolver == null) {
+          const meta = callInfo
+            ? {...rejection?.rejection, callArgs: callInfo.args}
+            : rejection?.rejection;
+          throw new MissingResolverError({
+            callId,
+            rejection: meta,
+            result,
+            stack: callInfo?.stack,
+          });
+        }
+
+        resolver(...data[1]);
         break;
       }
       case RELEASE: {
-        const [id] = data[1] as MessageMap[typeof RELEASE];
+        const [id] = data[1];
         encoder.release(id);
         break;
       }
-      case FUNCTION_RESULT: {
-        const [callId] = data[1] as MessageMap[typeof FUNCTION_RESULT];
-
-        callIdsToResolver.get(callId)!(
-          ...(data[1] as MessageMap[typeof FUNCTION_RESULT]),
-        );
-        callIdsToResolver.delete(callId);
-        break;
-      }
       case FUNCTION_APPLY: {
-        const [callId, funcId, args] =
-          data[1] as MessageMap[typeof FUNCTION_APPLY];
+        const [callId, funcId, args] = data[1];
 
         try {
           const result = await encoder.call(funcId, args);
           const [encoded, transferables] = encoder.encode(result);
           send(FUNCTION_RESULT, [callId, undefined, encoded], transferables);
         } catch (error) {
-          const {name, message, stack} = error as Error;
-          send(FUNCTION_RESULT, [callId, {name, message, stack}]);
+          const transportError = classifyTransportError(error, {
+            callId,
+            phase,
+          });
+          send(FUNCTION_RESULT, [callId, toWireRejection(transportError)]);
           throw error;
         }
 
@@ -243,11 +313,7 @@ export function createEndpoint<T>(
   function handlerForCall(property: string | number | symbol) {
     return (...args: any[]) => {
       if (terminated) {
-        return Promise.reject(
-          new Error(
-            'You attempted to call a function on a terminated web worker.',
-          ),
-        );
+        return Promise.reject(new CallAfterTerminateError());
       }
 
       if (typeof property !== 'string' && typeof property !== 'number') {
@@ -259,6 +325,7 @@ export function createEndpoint<T>(
       }
 
       const id = uuid();
+      pendingCallInfo.set(id, {stack: new Error().stack, args});
       const done = waitForResult(id);
       const [encoded, transferables] = encoder.encode(args);
 
@@ -274,18 +341,44 @@ export function createEndpoint<T>(
         if (errorResult == null) {
           resolve(value && encoder.decode(value, retainedBy));
         } else {
-          const error = new Error();
-          Object.assign(error, errorResult);
+          const error = new Error(errorResult.message);
+          (error as Error & {rejection: RpcRejectionMeta | undefined}).rejection = errorResult.rejection;
           reject(error);
         }
       });
     });
   }
 
+  function classifyTransportError(
+    cause: unknown,
+    context: Omit<EndpointTransportError, 'kind' | 'message' | 'cause'>,
+  ): EndpointTransportError {
+    let kind: EndpointErrorKind;
+
+    if (cause instanceof Error && cause.name === 'DataCloneError') {
+      kind = 'encode-decode';
+    } else {
+      kind = (cause as {kind?: EndpointErrorKind} | null | undefined)?.kind ?? 'unknown';
+    }
+    const message = cause instanceof Error ? cause.message : String(cause);
+
+    return {
+      kind,
+      message,
+      method: context.method,
+      args: context.args,
+      callId: context.callId,
+      phase: context.phase,
+      cause,
+    };
+  }
+
   function terminate() {
     terminated = true;
+    phase = 'terminated';
     activeApi.clear();
     callIdsToResolver.clear();
+    pendingCallInfo.clear();
     encoder.terminate?.();
     messenger.removeEventListener('message', listener);
   }
@@ -344,4 +437,24 @@ function createCallable<T>(
   }
 
   return call;
+}
+
+function toWireRejection(error: EndpointTransportError): RpcRejection {
+  return {
+    name: error.cause instanceof Error ? error.cause.name : 'Error',
+    message: error.message,
+    rejection: {
+      kind: error.kind,
+      method: error.method,
+      stack: error.cause instanceof Error ? error.cause.stack : undefined,
+    },
+  };
+}
+
+function isMessageData(value: unknown): value is MessageData {
+  return (
+    Array.isArray(value) &&
+    typeof value[0] === 'number' &&
+    (value[1] == null || Array.isArray(value[1]))
+  );
 }

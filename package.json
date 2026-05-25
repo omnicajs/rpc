@@ -19,8 +19,16 @@
     }
   },
   "sideEffects": false,
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
   "devDependencies": {
+    "@shopify/typescript-configs": "^5.1.2",
+    "@types/node": "^18.0.0",
     "@types/uuid": "^8.0.0",
-    "uuid": "^8.2.0"
+    "upstream-rpc": "npm:@remote-ui/rpc@^1.4.7",
+    "uuid": "^8.2.0",
+    "vitest": "^1.6.0"
   }
 }

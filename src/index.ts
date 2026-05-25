@@ -1,12 +1,17 @@
 export {createEndpoint} from './endpoint';
 export type {Endpoint, CreateEndpointOptions} from './endpoint';
-export {createBasicEncoder} from './encoding';
+export {
+  CallAfterTerminateError,
+  FunctionReleasedError,
+  NoExposedMethodError,
+} from './errors';
+export {createBasicEncoder} from './encoding/index';
 export {
   fromMessagePort,
   fromWebWorker,
   fromIframe,
   fromInsideIframe,
-} from './adaptors';
+} from './adaptors/index';
 export {
   retain,
   release,
@@ -21,6 +26,11 @@ export type {Retainer, MemoryManageable} from './memory';
 export type {
   EncodingStrategy,
   EncodingStrategyApi,
+  EndpointErrorKind,
+  EndpointPhase,
+  EndpointTransportError,
+  RpcRejection,
+  RpcRejectionMeta,
   RemoteCallable,
   SafeRpcArgument,
   MessageEndpoint,

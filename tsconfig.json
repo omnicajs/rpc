@@ -1,10 +1,13 @@
 {
   "extends": "../../config/typescript/tsconfig.base.json",
   "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "outDir": "build/ts",
     "baseUrl": "src",
     "rootDir": "src"
   },
   "include": ["src/**/*.ts"],
+  "exclude": ["src/tests/**"],
   "references": []
 }
