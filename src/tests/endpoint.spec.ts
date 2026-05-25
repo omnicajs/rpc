@@ -1,3 +1,4 @@
+import {describe, it, expect, vi} from 'vitest';
 import {MessageEndpoint} from '../types';
 import {createEndpoint, TERMINATE, MissingResolverError} from '../endpoint';
 import {fromMessagePort} from '../adaptors';
