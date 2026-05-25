@@ -7,6 +7,7 @@ import {
 } from '../types';
 import type {Retainer} from '../memory';
 import {StackFrame, isBasicObject, isMemoryManageable} from '../memory';
+import {FunctionReleasedError} from '../errors';
 
 type AnyFunction = (...args: any[]) => any;
 
@@ -25,9 +26,7 @@ export function createBasicEncoder(api: EncodingStrategyApi): EncodingStrategy {
       const func = idsToFunction.get(id);
 
       if (func == null) {
-        throw new Error(
-          'You attempted to call a function that was already released.',
-        );
+        throw new FunctionReleasedError('released');
       }
 
       try {
@@ -180,15 +179,11 @@ export function createBasicEncoder(api: EncodingStrategyApi): EncodingStrategy {
 
         const proxy = (...args: any[]) => {
           if (released) {
-            throw new Error(
-              'You attempted to call a function that was already released.',
-            );
+            throw new FunctionReleasedError('released');
           }
 
           if (!idsToProxy.has(id)) {
-            throw new Error(
-              'You attempted to call a function that was already revoked.',
-            );
+            throw new FunctionReleasedError('revoked');
           }
 
           return api.call(id, args);

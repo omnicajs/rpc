@@ -76,3 +76,38 @@ export interface EncodingStrategyApi {
   release(id: string): void;
   call(id: string, args: any[], retainedBy?: Iterable<Retainer>): Promise<any>;
 }
+
+export type EndpointPhase = 'active' | 'terminating' | 'terminated';
+
+export type EndpointErrorKind =
+  | 'call-after-terminate'
+  | 'function-already-released'
+  | 'unknown-call-id-response'
+  | 'unexpected-result-for-completed-call'
+  | 'late-message-after-teardown'
+  | 'no-exposed-method'
+  | 'encode-decode'
+  | 'unknown';
+
+export interface EndpointTransportError {
+  kind: EndpointErrorKind;
+  message: string;
+  method?: string;
+  args?: unknown[];
+  callId?: string;
+  phase: EndpointPhase;
+  cause: unknown;
+}
+
+export interface RpcRejectionMeta {
+  kind?: EndpointErrorKind;
+  method?: string;
+  stack?: string;
+  callArgs?: unknown[];
+}
+
+export interface RpcRejection {
+  name: string;
+  message: string;
+  rejection?: RpcRejectionMeta;
+}
