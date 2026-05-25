@@ -1,8 +1,10 @@
 {
-  "extends": "../../config/typescript/tsconfig.base.json",
   "compilerOptions": {
+    "target": "esnext",
+    "lib": ["esnext", "dom"],
     "module": "esnext",
     "moduleResolution": "bundler",
+    "types": ["node"],
     "outDir": "build/ts",
     "baseUrl": "src",
     "rootDir": "src"
