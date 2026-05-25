@@ -2,10 +2,9 @@ import {describe, it, expect} from 'vitest';
 
 import {createEndpoint} from '../../endpoint';
 import {fromMessagePort} from '../../adaptors/index';
-import {MessageEndpoint} from '../../types';
 import {CallAfterTerminateError, FunctionReleasedError} from '../../errors';
 import {retain, release} from '../../memory';
-import {createPair} from '../helpers';
+import {createCatchingMessageEndpoint, createPair} from '../helpers';
 
 describe('CallAfterTerminateError', () => {
   it('is thrown when calling a method after termination', async () => {
@@ -99,22 +98,3 @@ describe('NoExposedMethodError', () => {
     });
   });
 });
-
-function createCatchingMessageEndpoint(
-  messagePort: MessagePort,
-): MessageEndpoint {
-  const messageEndpoint = fromMessagePort(messagePort);
-
-  return {
-    ...messageEndpoint,
-    addEventListener: (event, listener) => {
-      messageEndpoint.addEventListener(event, async (...args) => {
-        try {
-          await listener(...args);
-        } catch {
-          /* empty */
-        }
-      });
-    },
-  };
-}
