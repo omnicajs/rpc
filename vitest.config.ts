@@ -5,6 +5,6 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     dangerouslyIgnoreUnhandledErrors: true,
-    include: ['src/tests/**/*.test.ts'],
+    include: ['src/tests/**/*.spec.ts'],
   },
 });
