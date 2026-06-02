@@ -1,9 +1,10 @@
+import type {
+  EncodingStrategy,
+  EncodingStrategyApi} from '../types';
 import {
   RETAINED_BY,
   RETAIN_METHOD,
-  RELEASE_METHOD,
-  EncodingStrategy,
-  EncodingStrategyApi,
+  RELEASE_METHOD
 } from '../types';
 import type {Retainer} from '../memory';
 import {StackFrame, isBasicObject, isMemoryManageable} from '../memory';
@@ -143,10 +144,6 @@ export function createBasicEncoder(api: EncodingStrategyApi): EncodingStrategy {
         return value as any;
       }
 
-      if (value instanceof ArrayBuffer) {
-        return value;
-      }
-
       if (Array.isArray(value)) {
         return value.map((value) => decode(value, retainedBy));
       }
@@ -204,13 +201,15 @@ export function createBasicEncoder(api: EncodingStrategyApi): EncodingStrategy {
         return proxy as any;
       }
 
-      return Object.keys(value).reduce(
-        (object, key) => ({
-          ...object,
-          [key]: decode((value as any)[key], retainedBy),
-        }),
-        {},
-      ) as any;
+      if (isBasicObject(value)) {
+        return Object.keys(value).reduce(
+          (object, key) => ({
+            ...object,
+            [key]: decode((value as any)[key], retainedBy),
+          }),
+          {},
+        ) as any;
+      }
     }
 
     return value as any;

@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.4.7
+
+### Patch Changes
+
+- [#575](https://github.com/Shopify/remote-dom/pull/575) [`ec8cbe8`](https://github.com/Shopify/remote-dom/commit/ec8cbe8c61d15a494ccd60b4b0515e201a132dae) Thanks [@josemiguel-alvarez](https://github.com/josemiguel-alvarez)! - Add early return in message listener as a safe guard to make sure we don't run into exceptions processing messages in terminated endpoints.
+
+## 1.4.6
+
+### Patch Changes
+
+- [#568](https://github.com/Shopify/remote-dom/pull/568) [`4d7da5f`](https://github.com/Shopify/remote-dom/commit/4d7da5f47f9a8c5c6340cc6726c8403475d599b2) Thanks [@josemiguel-alvarez](https://github.com/josemiguel-alvarez)! - An endpoint will trigger an uncaught promise rejection with a `MissingResolverError` error when it receives messages to call a function that is no longer registered.
+
+## 1.4.5
+
+### Patch Changes
+
+- [#255](https://github.com/Shopify/remote-ui/pull/255) [`c89ffb7`](https://github.com/Shopify/remote-ui/commit/c89ffb780660bda113c5e76ca10e46d4ffaf6072) Thanks [@robin-drexler](https://github.com/robin-drexler)! - allow File and other object types to be send over the RPC layer
+
 ## 1.4.4
 
 ### Patch Changes
