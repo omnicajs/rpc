@@ -60,6 +60,11 @@ jobs:
   tests:
     needs: [actionlint, eslint, typecheck]
 
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
@@ -88,15 +93,24 @@ jobs:
           path: coverage/
           retention-days: 30
 
-      - name: Upload coverage to Codecov
-        if: matrix.node-version == '24.x'
-        uses: codecov/codecov-action@v5
+      - name: Download base branch coverage
+        if: matrix.node-version == '24.x' && github.event_name == 'pull_request'
+        uses: dawidd6/action-download-artifact@v6
+        continue-on-error: true
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage/lcov.info
-          disable_search: true
-          fail_ci_if_error: true
-          verbose: true
+          workflow: tests.yml
+          branch: ${{ github.base_ref }}
+          name: coverage-merged-24.x
+          path: coverage-base/
+          if_no_artifact_found: warn
+
+      - name: Report coverage in PR
+        if: matrix.node-version == '24.x' && github.event_name == 'pull_request'
+        uses: davelosert/vitest-coverage-report-action@v2
+        with:
+          json-summary-path: coverage/coverage-summary.json
+          json-final-path: coverage/coverage-final.json
+          json-summary-compare-path: coverage-base/coverage-summary.json
 
   build:
     needs: [actionlint, eslint, typecheck]
