@@ -54,7 +54,7 @@ export default [
     },
   },
   {
-    files: ['src/tests/**/*.ts'],
+    files: ['tests/**/*.ts'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-unused-vars': 'off',

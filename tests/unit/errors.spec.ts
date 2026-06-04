@@ -4,7 +4,7 @@ import {
   CallAfterTerminateError,
   FunctionReleasedError,
   NoExposedMethodError,
-} from '../../errors';
+} from '@/errors';
 
 describe('CallAfterTerminateError', () => {
   const err = new CallAfterTerminateError();
