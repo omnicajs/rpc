@@ -82,7 +82,12 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache-key-suffix: tests-coverage
 
-      - name: Run tests with coverage
+      - name: Run tests without coverage on Node.js 22
+        if: matrix.node-version == '22.x'
+        run: yarn test
+
+      - name: Run tests with coverage on Node.js 24
+        if: matrix.node-version == '24.x'
         run: yarn test:coverage
 
       - name: Upload coverage artifact
@@ -104,13 +109,80 @@ jobs:
           path: coverage-base/
           if_no_artifact_found: warn
 
-      - name: Report coverage in PR
+      - name: Detect base branch coverage
+        id: base-coverage
         if: matrix.node-version == '24.x' && github.event_name == 'pull_request'
+        run: |
+          if [ -f coverage-base/coverage-summary.json ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write coverage summary
+        if: matrix.node-version == '24.x'
+        env:
+          HAS_BASE_COVERAGE: ${{ steps.base-coverage.outputs.available == 'true' }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const currentPath = 'coverage/coverage-summary.json';
+          const basePath = 'coverage-base/coverage-summary.json';
+          const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+          const hasBase = process.env.HAS_BASE_COVERAGE === 'true' && fs.existsSync(basePath);
+
+          const current = JSON.parse(fs.readFileSync(currentPath, 'utf8')).total;
+          const base = hasBase ? JSON.parse(fs.readFileSync(basePath, 'utf8')).total : undefined;
+          const metrics = ['lines', 'statements', 'functions', 'branches'];
+
+          const formatPct = (value) => `${value.toFixed(2)}%`;
+          const formatDelta = (value) => {
+            if (value === undefined) {
+              return 'n/a';
+            }
+            const sign = value > 0 ? '+' : '';
+            return `${sign}${value.toFixed(2)} pp`;
+          };
+
+          const rows = metrics.map((metric) => {
+            const currentPct = current[metric].pct;
+            const basePct = base?.[metric]?.pct;
+            const delta = basePct === undefined ? undefined : currentPct - basePct;
+            return `| ${metric} | ${formatPct(currentPct)} | ${formatDelta(delta)} |`;
+          });
+
+          fs.appendFileSync(
+            summaryPath,
+            [
+              '## Coverage',
+              '',
+              '| Metric | Current | Delta |',
+              '| --- | ---: | ---: |',
+              ...rows,
+              '',
+              hasBase
+                ? 'Delta is calculated against the base branch coverage artifact.'
+                : 'Base branch coverage artifact was not available, so delta is not shown.',
+              '',
+            ].join('\n'),
+          );
+          NODE
+
+      - name: Report coverage in PR with base comparison
+        if: matrix.node-version == '24.x' && github.event_name == 'pull_request' && steps.base-coverage.outputs.available == 'true'
         uses: davelosert/vitest-coverage-report-action@v2
         with:
           json-summary-path: coverage/coverage-summary.json
           json-final-path: coverage/coverage-final.json
           json-summary-compare-path: coverage-base/coverage-summary.json
+
+      - name: Report coverage in PR without base comparison
+        if: matrix.node-version == '24.x' && github.event_name == 'pull_request' && steps.base-coverage.outputs.available != 'true'
+        uses: davelosert/vitest-coverage-report-action@v2
+        with:
+          json-summary-path: coverage/coverage-summary.json
+          json-final-path: coverage/coverage-final.json
 
   build:
     needs: [actionlint, eslint, typecheck]
