@@ -27,9 +27,20 @@ export default defineConfig({
   },
   plugins: [
     dts({
-      include: ['src'],
+      include: ['src/**/*.ts'],
       exclude: ['tests/**'],
-      rollupTypes: true,
+      beforeWriteFile(filePath, content) {
+        const sourceOutput = `${path.sep}dist${path.sep}src${path.sep}`
+
+        if (filePath.includes(sourceOutput)) {
+          return {
+            filePath: filePath.replace(sourceOutput, `${path.sep}dist${path.sep}`),
+            content,
+          }
+        }
+
+        return {filePath, content}
+      },
     }),
   ],
 })
