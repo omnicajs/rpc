@@ -28,6 +28,11 @@ on:
         required: true
         default: "latest"
         type: string
+      skip_changelog:
+        description: "Skip CHANGELOG generation"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -97,6 +102,7 @@ jobs:
         env:
           RELEASE_TYPE: ${{ inputs.release }}
           PRERELEASE: ${{ inputs.prerelease }}
+          SKIP_CHANGELOG: ${{ inputs.skip_changelog }}
         run: |
           case "$RELEASE_TYPE" in
             auto)
@@ -120,6 +126,9 @@ jobs:
           CMD=(yarn run "$RELEASE_SCRIPT")
           if [ "$PRERELEASE" != "none" ]; then
             CMD+=(--prerelease "$PRERELEASE")
+          fi
+          if [ "$SKIP_CHANGELOG" = "true" ]; then
+            CMD+=(--skip.changelog)
           fi
 
           "${CMD[@]}"

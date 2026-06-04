@@ -1,7 +1,7 @@
 {
   "name": "@omnicajs/rpc",
   "description": "An RPC library with strong support for simulating the transfer of functions via postMessage",
-  "version": "1.4.7",
+  "version": "0.0.0",
   "type": "module",
   "license": "MIT",
   "packageManager": "yarn@4.13.0",
