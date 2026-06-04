@@ -4,15 +4,15 @@ import {
   fromMessagePort as fromUpstreamMessagePort,
 } from 'upstream-rpc';
 
-import {createEndpoint} from '../../endpoint';
-import {fromMessagePort} from '../../adaptors/index';
-import {FunctionReleasedError} from '../../errors';
-import {retain, release} from '../../memory';
+import {createEndpoint} from '@/endpoint';
+import {fromMessagePort} from '@/adaptors/index';
+import {FunctionReleasedError} from '@/errors';
+import {retain, release} from '@/memory';
 import {
   createCatchingMessageEndpoint,
   createCatchingUpstreamMessageEndpoint,
   createPair,
-} from '../helpers';
+} from '~tests/helpers';
 
 describe('call-site stack enrichment', () => {
   it('error.rejection contains rpc metadata', async () => {

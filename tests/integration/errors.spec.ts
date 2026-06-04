@@ -1,10 +1,10 @@
 import {describe, it, expect} from 'vitest';
 
-import {createEndpoint} from '../../endpoint';
-import {fromMessagePort} from '../../adaptors/index';
-import {CallAfterTerminateError, FunctionReleasedError} from '../../errors';
-import {retain, release} from '../../memory';
-import {createCatchingMessageEndpoint, createPair} from '../helpers';
+import {createEndpoint} from '@/endpoint';
+import {fromMessagePort} from '@/adaptors/index';
+import {CallAfterTerminateError, FunctionReleasedError} from '@/errors';
+import {retain, release} from '@/memory';
+import {createCatchingMessageEndpoint, createPair} from '~tests/helpers';
 
 describe('CallAfterTerminateError', () => {
   it('is thrown when calling a method after termination', async () => {

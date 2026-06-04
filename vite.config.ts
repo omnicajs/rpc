@@ -4,6 +4,12 @@ import {defineConfig} from 'vite'
 import dts from 'vite-plugin-dts'
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+      '~tests': path.resolve(__dirname, './tests'),
+    },
+  },
   build: {
     lib: {
       name: '@omnicajs/rpc',
@@ -22,7 +28,7 @@ export default defineConfig({
   plugins: [
     dts({
       include: ['src'],
-      exclude: ['src/tests/**'],
+      exclude: ['tests/**'],
       rollupTypes: true,
     }),
   ],

@@ -1,10 +1,10 @@
 import {describe, it, expect, vi} from 'vitest';
 
-import {createEndpoint, TERMINATE, MissingResolverError} from '../../endpoint';
-import {fromMessagePort} from '../../adaptors';
-import {FunctionReleasedError} from '../../errors';
-import {release, retain} from '../../memory';
-import {createCatchingMessageEndpoint, createPair} from '../helpers';
+import {createEndpoint, TERMINATE, MissingResolverError} from '@/endpoint';
+import {fromMessagePort} from '@/adaptors';
+import {FunctionReleasedError} from '@/errors';
+import {release, retain} from '@/memory';
+import {createCatchingMessageEndpoint, createPair} from '~tests/helpers';
 
 describe('createEndpoint()', () => {
   it('calls the exposed API of the paired endpoint', async () => {
