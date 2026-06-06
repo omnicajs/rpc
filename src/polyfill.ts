@@ -66,10 +66,7 @@ export class MessagePortPolyfill implements MessagePort {
   start() {
     this.started = true;
     while (this.eventQueue.length > 0) {
-      const event = this.eventQueue.shift();
-      if (event) {
-        this.dispatchEvent(event);
-      }
+      this.dispatchEvent(this.eventQueue.shift()!);
     }
   }
 

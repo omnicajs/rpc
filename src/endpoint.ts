@@ -125,7 +125,6 @@ export function createEndpoint<T>(
   let messenger = initialMessenger;
 
   const activeApi = new Map<string | number, AnyFunction>();
-  const pendingCallInfo = new Map<string, {stack: string | undefined; args: unknown[]}>();
   const callIdsToResolver = new Map<
     string,
     (
@@ -266,18 +265,12 @@ export function createEndpoint<T>(
         const [callId, rejection, result] = data[1];
         const resolver = callIdsToResolver.get(callId);
         callIdsToResolver.delete(callId);
-        const callInfo = pendingCallInfo.get(callId);
-        pendingCallInfo.delete(callId);
 
         if (resolver == null) {
-          const meta = callInfo
-            ? {...rejection?.rejection, callArgs: callInfo.args}
-            : rejection?.rejection;
           throw new MissingResolverError({
             callId,
-            rejection: meta,
+            rejection: rejection?.rejection,
             result,
-            stack: callInfo?.stack,
           });
         }
 
@@ -325,7 +318,6 @@ export function createEndpoint<T>(
       }
 
       const id = uuid();
-      pendingCallInfo.set(id, {stack: new Error().stack, args});
       const done = waitForResult(id);
       const [encoded, transferables] = encoder.encode(args);
 
@@ -342,6 +334,12 @@ export function createEndpoint<T>(
           resolve(value && encoder.decode(value, retainedBy));
         } else {
           const error = new Error(errorResult.message);
+          error.name = errorResult.name;
+
+          if (errorResult.rejection?.stack) {
+            error.stack = errorResult.rejection.stack;
+          }
+
           (error as Error & {rejection: RpcRejectionMeta | undefined}).rejection = errorResult.rejection;
           reject(error);
         }
@@ -378,7 +376,6 @@ export function createEndpoint<T>(
     phase = 'terminated';
     activeApi.clear();
     callIdsToResolver.clear();
-    pendingCallInfo.clear();
     encoder.terminate?.();
     messenger.removeEventListener('message', listener);
   }

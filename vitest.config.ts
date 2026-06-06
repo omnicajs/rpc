@@ -12,7 +12,6 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    dangerouslyIgnoreUnhandledErrors: true,
     include: ['tests/**/*.spec.ts'],
     coverage: {
       provider: 'v8',

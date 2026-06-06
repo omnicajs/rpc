@@ -1,12 +1,38 @@
-import {describe, it, expect, vi} from 'vitest';
+import {afterEach, describe, it, expect, vi} from 'vitest';
 
-import {createEndpoint, TERMINATE, MissingResolverError} from '@/endpoint';
+import {CALL, FUNCTION_APPLY, FUNCTION_RESULT, RESULT, TERMINATE} from '@/endpoint';
+import {createEndpoint, MissingResolverError} from '@/index';
 import {fromMessagePort} from '@/adaptors';
 import {FunctionReleasedError} from '@/errors';
 import {release, retain} from '@/memory';
+import type {MessageEndpoint} from '@/types';
 import {createCatchingMessageEndpoint, createPair} from '~tests/helpers';
 
+function createManualMessageEndpoint(): MessageEndpoint & {
+  listener?: (event: MessageEvent) => void | Promise<void>;
+  postMessage: ReturnType<typeof vi.fn>;
+  removeEventListener: ReturnType<typeof vi.fn>;
+} {
+  const endpoint = {
+    postMessage: vi.fn(),
+    addEventListener: vi.fn((_event, listener) => {
+      endpoint.listener = listener;
+    }),
+    removeEventListener: vi.fn(),
+  } as MessageEndpoint & {
+    listener?: (event: MessageEvent) => void | Promise<void>;
+    postMessage: ReturnType<typeof vi.fn>;
+    removeEventListener: ReturnType<typeof vi.fn>;
+  };
+
+  return endpoint;
+}
+
 describe('createEndpoint()', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('calls the exposed API of the paired endpoint', async () => {
     const {port1, port2} = createPair();
     const endpoint1 = createEndpoint<{hello(): string}>(fromMessagePort(port1));
@@ -203,6 +229,184 @@ describe('createEndpoint()', () => {
 
       expect(spy).not.toHaveBeenCalled();
     });
+
+    it('can terminate a messenger without a terminate hook', () => {
+      const messenger = createManualMessageEndpoint();
+      const endpoint = createEndpoint(messenger);
+
+      endpoint.terminate();
+
+      expect(messenger.removeEventListener).toHaveBeenCalled();
+      expect(messenger.postMessage).toHaveBeenCalledWith(
+        [TERMINATE],
+        undefined,
+      );
+    });
+  });
+
+  describe('message listener edge cases', () => {
+    it('ignores malformed messages and messages after termination', async () => {
+      const messenger = createManualMessageEndpoint();
+      const endpoint = createEndpoint(messenger);
+
+      await expect(
+        messenger.listener!({data: 'invalid'} as MessageEvent),
+      ).resolves.toBeUndefined();
+
+      endpoint.terminate();
+
+      await expect(
+        messenger.listener!({
+          data: [CALL, ['id', 'missing', []]],
+        } as MessageEvent),
+      ).resolves.toBeUndefined();
+    });
+
+    it('returns a rejection for function apply messages with missing functions', async () => {
+      const messenger = createManualMessageEndpoint();
+      createEndpoint(messenger);
+
+      await expect(
+        messenger.listener!({
+          data: [FUNCTION_APPLY, ['call-id', 'missing-function', []]],
+        } as MessageEvent),
+      ).rejects.toBeInstanceOf(FunctionReleasedError);
+
+      expect(messenger.postMessage).toHaveBeenCalledWith(
+        [
+          FUNCTION_RESULT,
+          [
+            'call-id',
+            expect.objectContaining({
+              message: expect.stringContaining('released'),
+              rejection: expect.objectContaining({
+                kind: 'function-already-released',
+              }),
+            }),
+          ],
+        ],
+        undefined,
+      );
+    });
+
+    it('classifies DataCloneError failures as encode-decode transport errors', async () => {
+      const messenger = createManualMessageEndpoint();
+      const endpoint = createEndpoint(messenger);
+      const error = new Error('cannot clone');
+      error.name = 'DataCloneError';
+
+      endpoint.expose({
+        clone() {
+          throw error;
+        },
+      });
+
+      await expect(
+        messenger.listener!({
+          data: [CALL, ['call-id', 'clone', []]],
+        } as MessageEvent),
+      ).rejects.toBe(error);
+
+      expect(messenger.postMessage).toHaveBeenCalledWith(
+        [
+          RESULT,
+          [
+            'call-id',
+            expect.objectContaining({
+              rejection: expect.objectContaining({kind: 'encode-decode'}),
+            }),
+          ],
+        ],
+        undefined,
+      );
+    });
+
+    it('serializes non-Error thrown values as unknown transport errors', async () => {
+      const messenger = createManualMessageEndpoint();
+      const endpoint = createEndpoint(messenger);
+      const failure = {toString: () => 'string failure'};
+
+      endpoint.expose({
+        fail() {
+          throw failure;
+        },
+      });
+
+      await expect(
+        messenger.listener!({
+          data: [CALL, ['call-id', 'fail', []]],
+        } as MessageEvent),
+      ).rejects.toBe(failure);
+
+      expect(messenger.postMessage).toHaveBeenCalledWith(
+        [
+          RESULT,
+          [
+            'call-id',
+            {
+              name: 'Error',
+              message: 'string failure',
+              rejection: {
+                kind: 'unknown',
+                method: 'fail',
+                stack: undefined,
+              },
+            },
+          ],
+        ],
+        undefined,
+      );
+    });
+  });
+
+  describe('#call', () => {
+    it('rejects symbol method calls', async () => {
+      const {port1} = createPair();
+      const endpoint = createEndpoint<any>(fromMessagePort(port1));
+      const method = endpoint.call[Symbol('method') as any];
+
+      await expect(method()).rejects.toThrow(/symbol method/);
+    });
+
+    it('caches proxy method handlers', () => {
+      const {port1} = createPair();
+      const endpoint = createEndpoint<any>(fromMessagePort(port1));
+
+      expect(endpoint.call.hello).toBe(endpoint.call.hello);
+    });
+
+    it('ignores callable additions in proxy mode', () => {
+      const {port1} = createPair();
+      const endpoint = createEndpoint<any>(fromMessagePort(port1));
+      const method = endpoint.call.dynamic;
+
+      endpoint.callable('dynamic');
+
+      expect(endpoint.call.dynamic).toBe(method);
+    });
+
+    it('supports explicit callable method lists', () => {
+      const {port1} = createPair();
+      const endpoint = createEndpoint<{hello(): string; later(): string}>(
+        fromMessagePort(port1),
+        {callable: ['hello']},
+      );
+
+      expect(endpoint.call.hello).toBeTypeOf('function');
+      expect((endpoint.call as any).later).toBeUndefined();
+
+      endpoint.callable('later');
+
+      expect(endpoint.call.later).toBeTypeOf('function');
+    });
+
+    it('rejects proxy mode when Proxy is unavailable', () => {
+      const {port1} = createPair();
+
+      vi.stubGlobal('Proxy', undefined);
+
+      expect(() => createEndpoint(fromMessagePort(port1))).toThrow(/Proxies/);
+    });
   });
 
   describe('FunctionReleasedError in encoder', () => {
@@ -246,5 +450,29 @@ describe('createEndpoint()', () => {
         expect.objectContaining({state: 'released'}),
       );
     });
+  });
+});
+
+describe('MissingResolverError', () => {
+  it('preserves error, result, rejection, and stack details', () => {
+    const error = new Error('remote');
+    const missingResolverError = new MissingResolverError({
+      callId: 'call-id',
+      error,
+      rejection: {kind: 'unknown', stack: 'remote stack'},
+      result: {ok: false},
+      stack: 'call stack',
+    });
+
+    expect(missingResolverError.message).toContain('call-id');
+    expect(missingResolverError.message).toContain('remote');
+    expect(missingResolverError.message).toContain('{"ok":false}');
+    expect(missingResolverError.error).toBe(error);
+    expect(missingResolverError.rejection).toEqual({
+      kind: 'unknown',
+      stack: 'remote stack',
+    });
+    expect(missingResolverError.result).toEqual({ok: false});
+    expect(missingResolverError.stack).toBe('call stack');
   });
 });

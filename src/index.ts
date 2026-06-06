@@ -1,4 +1,4 @@
-export {createEndpoint} from './endpoint';
+export {createEndpoint, MissingResolverError} from './endpoint';
 export type {Endpoint, CreateEndpointOptions} from './endpoint';
 export {
   CallAfterTerminateError,

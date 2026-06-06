@@ -52,7 +52,7 @@ describe('call-site stack enrichment', () => {
     expect(await ep1.call.ping()).toBe('pong');
   });
 
-  it('remote stack is preserved in error.rejection.stack', async () => {
+  it('remote error name and stack are preserved', async () => {
     const {port1, port2} = createPair();
     const ep1 = createEndpoint<{compute(n: number): number}>(
       fromMessagePort(port1),
@@ -73,6 +73,8 @@ describe('call-site stack enrichment', () => {
     }
 
     expect(caught).toBeDefined();
+    expect(caught.name).toBe('RangeError');
+    expect(caught.stack).toContain('compute');
     expect(caught.rejection.stack).toContain('compute');
   });
 });
