@@ -77,3 +77,13 @@ export class MessagePortPolyfill implements MessagePort {
     this.started = false;
   }
 }
+
+export function pair(
+  port1: MessagePortPolyfill,
+  port2: MessagePortPolyfill,
+) {
+  port1.otherPort = port2;
+  port2.otherPort = port1;
+  port1.start();
+  port2.start();
+}
