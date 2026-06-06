@@ -1,12 +1,14 @@
 import {fromMessagePort as fromUpstreamMessagePort} from 'upstream-rpc';
 
 import {fromMessagePort} from '@/adaptors';
+import {MessagePortPolyfill} from '@/polyfill';
 import type {MessageEndpoint} from '@/types';
 
-import {MessageChannel} from '~tests/utilities';
-
 export function createPair(): {port1: MessagePort; port2: MessagePort} {
-  const {port1, port2} = new MessageChannel();
+  const port1 = new MessagePortPolyfill();
+  const port2 = new MessagePortPolyfill();
+  port1.otherPort = port2;
+  port2.otherPort = port1;
   port1.start();
   port2.start();
   return {port1, port2};

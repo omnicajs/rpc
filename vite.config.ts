@@ -13,9 +13,12 @@ export default defineConfig({
   build: {
     lib: {
       name: '@omnicajs/rpc',
-      entry: path.resolve(__dirname, './src/index.ts'),
+      entry: {
+        index: path.resolve(__dirname, './src/index.ts'),
+        polyfill: path.resolve(__dirname, './src/polyfill.ts'),
+      },
       formats: ['es', 'cjs'],
-      fileName: (format) => `index.${format === 'es' ? 'mjs' : 'cjs'}`,
+      fileName: (format, entryName) => `${entryName}.${format === 'es' ? 'mjs' : 'cjs'}`,
     },
     minify: false,
     sourcemap: true,

@@ -1,4 +1,4 @@
-class MessagePortPolyfill implements MessagePort {
+export class MessagePortPolyfill implements MessagePort {
   onmessageerror: EventListener | null = null;
 
   otherPort!: MessagePortPolyfill;
@@ -77,17 +77,3 @@ class MessagePortPolyfill implements MessagePort {
     this.started = false;
   }
 }
-
-class MessageChannelPolyfill implements MessageChannel {
-  readonly port1: MessagePortPolyfill;
-  readonly port2: MessagePortPolyfill;
-
-  constructor() {
-    this.port1 = new MessagePortPolyfill();
-    this.port2 = new MessagePortPolyfill();
-    this.port1.otherPort = this.port2;
-    this.port2.otherPort = this.port1;
-  }
-}
-
-export {MessageChannelPolyfill as MessageChannel};
