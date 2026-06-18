@@ -94,12 +94,98 @@ jobs:
         if: matrix.node-version == '24.x'
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-merged-24.x
+          name: coverage-unit-24.x
           path: coverage/
           retention-days: 30
 
-      - name: Download base branch coverage
-        if: matrix.node-version == '24.x' && github.event_name == 'pull_request'
+  e2e:
+    needs: [actionlint, eslint, typecheck]
+
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Using branch ${{ github.ref }} for repository ${{ github.repository }}.
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js and dependencies
+        uses: ./.github/actions/setup-node-deps
+        with:
+          node-version: 24.x
+          cache-key-suffix: tests-e2e
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium firefox --with-deps
+
+      - name: Run browser e2e tests with coverage
+        run: yarn test:e2e:coverage
+
+      - name: Upload e2e coverage artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-e2e-24.x
+          path: coverage/playwright/
+          retention-days: 30
+
+      - name: Upload e2e artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-artifacts
+          path: |
+            artifacts/
+            .vitest-attachments/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  coverage:
+    needs: [tests, e2e]
+
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Using branch ${{ github.ref }} for repository ${{ github.repository }}.
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js and dependencies
+        uses: ./.github/actions/setup-node-deps
+        with:
+          node-version: 24.x
+          cache-key-suffix: coverage-merge
+
+      - name: Download unit coverage artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: coverage-unit-24.x
+          path: coverage-input/unit/
+
+      - name: Download e2e coverage artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: coverage-e2e-24.x
+          path: coverage-input/e2e/
+
+      - name: Merge coverage reports
+        run: |
+          node scripts/coverage-merge.mjs \
+            --out coverage-merged \
+            coverage-input/unit/coverage-final.json \
+            coverage-input/e2e/coverage-final.json
+
+      - name: Upload merged coverage artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-merged-24.x
+          path: coverage-merged/
+          retention-days: 30
+
+      - name: Download base branch merged coverage
+        if: github.event_name == 'pull_request'
         uses: dawidd6/action-download-artifact@v6
         continue-on-error: true
         with:
@@ -111,7 +197,7 @@ jobs:
 
       - name: Detect base branch coverage
         id: base-coverage
-        if: matrix.node-version == '24.x' && github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request'
         run: |
           if [ -f coverage-base/coverage-summary.json ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
@@ -119,70 +205,28 @@ jobs:
             echo "available=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Write coverage summary
-        if: matrix.node-version == '24.x'
-        env:
-          HAS_BASE_COVERAGE: ${{ steps.base-coverage.outputs.available == 'true' }}
+      - name: Write merged coverage summary
         run: |
-          node <<'NODE'
-          const fs = require('node:fs');
+          node scripts/coverage-summary.mjs \
+            --current coverage-merged/coverage-summary.json \
+            --base coverage-base/coverage-summary.json \
+            --title "Combined Coverage" \
+            --baseLabel "base branch merged coverage artifact"
 
-          const currentPath = 'coverage/coverage-summary.json';
-          const basePath = 'coverage-base/coverage-summary.json';
-          const summaryPath = process.env.GITHUB_STEP_SUMMARY;
-          const hasBase = process.env.HAS_BASE_COVERAGE === 'true' && fs.existsSync(basePath);
-
-          const current = JSON.parse(fs.readFileSync(currentPath, 'utf8')).total;
-          const base = hasBase ? JSON.parse(fs.readFileSync(basePath, 'utf8')).total : undefined;
-          const metrics = ['lines', 'statements', 'functions', 'branches'];
-
-          const formatPct = (value) => `${value.toFixed(2)}%`;
-          const formatDelta = (value) => {
-            if (value === undefined) {
-              return 'n/a';
-            }
-            const sign = value > 0 ? '+' : '';
-            return `${sign}${value.toFixed(2)} pp`;
-          };
-
-          const rows = metrics.map((metric) => {
-            const currentPct = current[metric].pct;
-            const basePct = base?.[metric]?.pct;
-            const delta = basePct === undefined ? undefined : currentPct - basePct;
-            return `| ${metric} | ${formatPct(currentPct)} | ${formatDelta(delta)} |`;
-          });
-
-          fs.appendFileSync(
-            summaryPath,
-            [
-              '## Coverage',
-              '',
-              '| Metric | Current | Delta |',
-              '| --- | ---: | ---: |',
-              ...rows,
-              '',
-              hasBase
-                ? 'Delta is calculated against the base branch coverage artifact.'
-                : 'Base branch coverage artifact was not available, so delta is not shown.',
-              '',
-            ].join('\n'),
-          );
-          NODE
-
-      - name: Report coverage in PR with base comparison
-        if: matrix.node-version == '24.x' && github.event_name == 'pull_request' && steps.base-coverage.outputs.available == 'true'
+      - name: Report merged coverage in PR with base comparison
+        if: github.event_name == 'pull_request' && steps.base-coverage.outputs.available == 'true'
         uses: davelosert/vitest-coverage-report-action@v2
         with:
-          json-summary-path: coverage/coverage-summary.json
-          json-final-path: coverage/coverage-final.json
+          json-summary-path: coverage-merged/coverage-summary.json
+          json-final-path: coverage-merged/coverage-final.json
           json-summary-compare-path: coverage-base/coverage-summary.json
 
-      - name: Report coverage in PR without base comparison
-        if: matrix.node-version == '24.x' && github.event_name == 'pull_request' && steps.base-coverage.outputs.available != 'true'
+      - name: Report merged coverage in PR without base comparison
+        if: github.event_name == 'pull_request' && steps.base-coverage.outputs.available != 'true'
         uses: davelosert/vitest-coverage-report-action@v2
         with:
-          json-summary-path: coverage/coverage-summary.json
-          json-final-path: coverage/coverage-final.json
+          json-summary-path: coverage-merged/coverage-summary.json
+          json-final-path: coverage-merged/coverage-final.json
 
   build:
     needs: [actionlint, eslint, typecheck]

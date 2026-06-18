@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>RPC iframe fixture</title>
+  </head>
+  <body>
+    <script type="module">
+      import {createEndpoint, fromInsideIframe} from '/src/index.ts';
+
+      const endpoint = createEndpoint(fromInsideIframe());
+
+      endpoint.expose({
+        async callHost(callback, value) {
+          return callback(value);
+        },
+        summarize(payload) {
+          return `${payload.prefix}:${payload.value}`;
+        },
+      });
+    </script>
+  </body>
+</html>

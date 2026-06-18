@@ -22,7 +22,12 @@ dist/
 
 # Coverage
 coverage/
+coverage-merged/
 .nyc_output/
+
+# Browser test artifacts
+artifacts/
+.vitest-attachments/
 
 # Caches
 .eslintcache

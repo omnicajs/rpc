@@ -1,0 +1,5 @@
+name: omnicajs-rpc
+
+include:
+  - docker/node.yml
+  - docker/playwright.yml

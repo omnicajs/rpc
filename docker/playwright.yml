@@ -1,0 +1,19 @@
+x-node-common: &node-common
+  build:
+    context: ..
+    dockerfile: docker/services/playwright/Dockerfile
+  user: "${UID:-1000}:${GID:-1000}"
+  volumes:
+    - ../:/project
+  working_dir: /project
+  ipc: host
+  init: true
+  profiles:
+    - e2e
+
+services:
+  e2e-vitest:
+    <<: *node-common
+    command: >
+      sh -lc "if [ ! -d node_modules/.bin ]; then yarn install --immutable; fi &&
+      yarn test:e2e"

@@ -136,7 +136,7 @@ jobs:
       - name: Resolve release tag
         id: release-meta
         run: |
-          version="$(node -p "require('./package.json').version")"
+          version="$(node scripts/package-field.mjs version)"
           tag="v${version}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
@@ -172,8 +172,8 @@ jobs:
         id: npm-version
         shell: bash
         run: |
-          PACKAGE_NAME="$(node -p "require('./package.json').name")"
-          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          PACKAGE_NAME="$(node scripts/package-field.mjs name)"
+          PACKAGE_VERSION="$(node scripts/package-field.mjs version)"
 
           if npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version --silent >/dev/null 2>&1; then
             echo "${PACKAGE_NAME}@${PACKAGE_VERSION} is already published; skipping npm publish."
@@ -219,8 +219,8 @@ jobs:
         id: npm-version
         shell: bash
         run: |
-          PACKAGE_NAME="$(node -p "require('./package.json').name")"
-          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          PACKAGE_NAME="$(node scripts/package-field.mjs name)"
+          PACKAGE_VERSION="$(node scripts/package-field.mjs version)"
 
           if npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version --silent >/dev/null 2>&1; then
             echo "${PACKAGE_NAME}@${PACKAGE_VERSION} is already published; skipping npm publish."

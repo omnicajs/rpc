@@ -1,0 +1,13 @@
+x-node-common: &node-common
+  build:
+    context: ..
+    dockerfile: docker/services/node/Dockerfile
+  user: "${UID:-1000}:${GID:-1000}"
+  volumes:
+    - ../:/project
+  working_dir: /project
+
+services:
+  node:
+    <<: *node-common
+    command: sleep infinity
